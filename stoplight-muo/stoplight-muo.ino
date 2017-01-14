@@ -13,7 +13,7 @@ void loop(){
     delay(15000);
 }
 
-void changeLights()
+void changeLights() {
     // green off, yellow on for 3 seconds
     digitalWrite(green, LOW);
     digitalWrite(yellow, HIGH);
