@@ -29,6 +29,7 @@
 
 // Enable debug prints to serial monitor
 #define MY_DEBUG
+#define MY_NODE_ID 254
 
 // Enable and select radio type attached
 #define MY_RADIO_NRF24
@@ -37,59 +38,91 @@
 // Enable repeater functionality for this node
 #define MY_REPEATER_FEATURE
 
+#include <SPI.h>
 #include <MySensors.h>
+#include <Bounce2.h>
 
+// relay settings
 #define RELAY_1  3  // Arduino Digital I/O pin number for first relay (second on pin+1 etc)
-#define NUMBER_OF_RELAYS 1 // Total number of attached relays
-#define RELAY_ON 1  // GPIO value to write to turn on attached relay
-#define RELAY_OFF 0 // GPIO value to write to turn off attached relay
+#define NUMBER_OF_RELAYS 2 // Total number of attached relays
+#define RELAY_ON 0  // GPIO value to write to turn on attached relay
+#define RELAY_OFF 1 // GPIO value to write to turn off attached relay
 
+//button settings
+#define CHILD_ID 3
+#define BUTTON_PIN  5  // Arduino Digital I/O pin for button/reed switch
+Bounce debouncer = Bounce(); 
+int oldValue=-1;
+
+// Change to V_LIGHT if you use S_LIGHT in presentation below
+MyMessage msg(CHILD_ID,V_LIGHT);
 
 void before()
 {
-	for (int sensor=1, pin=RELAY_1; sensor<=NUMBER_OF_RELAYS; sensor++, pin++) {
-		// Then set relay pins in output mode
-		pinMode(pin, OUTPUT);
-		// Set relay to last known state (using eeprom storage)
-		digitalWrite(pin, loadState(sensor)?RELAY_ON:RELAY_OFF);
-	}
+  for (int sensor=1, pin=RELAY_1; sensor<=NUMBER_OF_RELAYS; sensor++, pin++) {
+    // Then set relay pins in output mode
+    pinMode(pin, OUTPUT);
+    // Set relay to last known state (using eeprom storage)
+    digitalWrite(pin, loadState(sensor)?RELAY_ON:RELAY_OFF);
+  }
 }
 
 void setup()
 {
+ // Setup the button
+  pinMode(BUTTON_PIN,INPUT);
+  // Activate internal pull-up
+  digitalWrite(BUTTON_PIN,HIGH);
+
+  // After setting up the button, setup debouncer
+  debouncer.attach(BUTTON_PIN);
+  debouncer.interval(5);
 
 }
 
 void presentation()
 {
-	// Send the sketch version information to the gateway and Controller
-	sendSketchInfo("Relay", "1.0");
+  // Send the sketch version information to the gateway and Controller
+  sendSketchInfo("Relay", "1.0");
 
-	for (int sensor=1, pin=RELAY_1; sensor<=NUMBER_OF_RELAYS; sensor++, pin++) {
-		// Register all sensors to gw (they will be created as child devices)
-		present(sensor, S_BINARY);
-	}
+  for (int sensor=1, pin=RELAY_1; sensor<=NUMBER_OF_RELAYS; sensor++, pin++) {
+    // Register all sensors to gw (they will be created as child devices)
+    present(sensor, S_BINARY);
+  }
+
+  // Register binary input sensor to gw (they will be created as child devices)
+  // You can use S_DOOR, S_MOTION or S_LIGHT here depending on your usage. 
+  // If S_LIGHT is used, remember to update variable type you send in. See "msg" above.
+  present(CHILD_ID, S_LIGHT);  
 }
 
 
 void loop()
 {
+ debouncer.update();
+  // Get the update value
+  int value = debouncer.read();
 
+  if (value != oldValue) {
+     // Send in the new value
+     send(msg.set(value==HIGH ? 1 : 0));
+     oldValue = value;
+  }
 }
 
 void receive(const MyMessage &message)
 {
-	// We only expect one type of message from controller. But we better check anyway.
-	if (message.type==V_STATUS) {
-		// Change relay state
-		digitalWrite(message.sensor-1+RELAY_1, message.getBool()?RELAY_ON:RELAY_OFF);
-		// Store state in eeprom
-		saveState(message.sensor, message.getBool());
-		// Write some debug info
-		Serial.print("Incoming change for sensor:");
-		Serial.print(message.sensor);
-		Serial.print(", New status: ");
-		Serial.println(message.getBool());
-	}
+  // We only expect one type of message from controller. But we better check anyway.
+  if (message.type==V_STATUS) {
+    // Change relay state
+    digitalWrite(message.sensor-1+RELAY_1, message.getBool()?RELAY_ON:RELAY_OFF);
+    // Store state in eeprom
+    saveState(message.sensor, message.getBool());
+    // Write some debug info
+    Serial.print("Incoming change for sensor:");
+    Serial.print(message.sensor);
+    Serial.print(", New status: ");
+    Serial.println(message.getBool());
+  }
 }
 
